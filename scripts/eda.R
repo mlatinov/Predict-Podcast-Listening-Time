@@ -11,10 +11,81 @@ train <- read.csv("Data/train.csv",stringsAsFactors = TRUE)
 
 # Remove id 
 eda <- train %>% 
+  na.omit()%>%
   select(-id) %>%
   mutate(
-    Episode_Title = factor(substr(x = Episode_Title,start = 8,stop = 12))
+    Episode_Title = as.numeric(substr(x = Episode_Title,start = 8,stop = 12))
   )
+
+## Add New features ##
+eda <- eda %>%
+  mutate(
+    
+    ## Features from Episode_Title
+    # Modify Episode_Title to be binned 
+    Episode_Stage = case_when(
+      Episode_Title <= 10 ~"New",
+      Episode_Title <= 50 ~"Established",
+      TRUE ~ "Legacy"),
+    
+    # Special Numbers
+    Is_Milestone = case_when(
+      Episode_Title%% 25 == 0 ~ "Special", # Episodes like 25, 50, 75...
+      Episode_Title%% 50 == 0 ~ "Special", # Episodes like 50, 100, 150...
+      Episode_Title%% 10 == 0 & Episode_Title <= 40 ~ "Special",
+      TRUE ~ "Regular"
+    ),
+    
+    ## Popularity Features 
+    # Combine Popularity
+    Total_Popularity = Host_Popularity_percentage + Guest_Popularity_percentage,
+    
+    ## Podcast_Quality
+    
+    # Convert Sentiment into numeric
+    Sentiment_score = case_when(
+      Episode_Sentiment == "Positive"~ 100,
+      Episode_Sentiment == "Neutral" ~ 50,
+      Episode_Sentiment == "Negative" ~ 0),
+    
+    # Make a Podcast Quality features as a weighted sum of popularity and sentiment
+    Podcast_Quality = 
+      0.3 * Host_Popularity_percentage +
+      0.3 * Guest_Popularity_percentage +
+      0.4 * Sentiment_score,
+    
+    # Podcast Quality Binned
+    Podcast_Quality_Group = case_when(
+      Podcast_Quality >= 80 ~ "Good_Episode",
+      Podcast_Quality >= 50 ~ "Mid_Episode",
+      TRUE ~ "Bad_Episode"
+    ),
+    # Add Density 
+    add_density = Episode_Length_minutes / (Number_of_Ads + 1),
+    
+    # Genre Grouping 
+    Meta_genre = case_when(
+      Genre %in% c("Education", "Health", "Lifestyle", "Technology", "True Crime")~"Informative",
+      Genre %in% c("Comedy", "Music","Sports") ~ "Entertainment",
+      Genre %in% c("Business", "News") ~ "Serious"),
+    
+    # Publication Day Group 
+    Publication_Day_Group = case_when(
+      Publication_Day %in% c("Tuesday", "Wednesday") ~ "Prime",
+      Publication_Day %in% c("Sunday", "Monday", "Saturday") ~ "Steady",
+      Publication_Day %in% c("Thursday", "Friday") ~ "Low"
+    ),
+    
+    # Publication Time Group
+    Publication_Time_Group = case_when(
+      Publication_Time == "Night" ~ "Peak",
+      Publication_Time %in% c("Morning", "Evening") ~ "Normal",
+      Publication_Time == "Afternoon" ~ "Off_Peak"
+    )
+  )%>%
+  # Convert Char into Factors
+  mutate(across(where(is.character), as.factor))
+
 
 #### Univariate Analysis ####
 
@@ -133,11 +204,14 @@ num_biv_func <- function(df,col1,col2){
 }
 
 # Execute the func
-num_biv_func(df = eda_clean,col1 = "Episode_Length_minutes",col2 = "Listening_Time_minutes")
-num_biv_func(df = eda_clean,col1 = "Host_Popularity_percentage",col2 = "Listening_Time_minutes")
-num_biv_func(df = eda_clean,col1 = "Guest_Popularity_percentage",col2 = "Listening_Time_minutes")
-num_biv_func(df = eda_clean,col1 = "Number_of_Ads",col2 = "Listening_Time_minutes")
-num_biv_func(df = eda_clean,col1 = "Number_of_Ads",col2 = "Guest_Popularity_percentage")
+num_biv_func(df = eda,col1 = "Episode_Length_minutes",col2 = "Listening_Time_minutes")
+num_biv_func(df = eda,col1 = "Host_Popularity_percentage",col2 = "Listening_Time_minutes")
+num_biv_func(df = eda,col1 = "Guest_Popularity_percentage",col2 = "Listening_Time_minutes")
+num_biv_func(df = eda,col1 = "Number_of_Ads",col2 = "Listening_Time_minutes")
+num_biv_func(df = eda,col1 = "Number_of_Ads",col2 = "Host_Popularity_percentage")
+num_biv_func(df = eda,col1 = "add_density",col2 = "Listening_Time_minutes")
+num_biv_func(df = eda,col1 = "Total_Popularity",col2 = "Listening_Time_minutes")
+num_biv_func(df = eda,col1 = "Podcast_Quality",col2 = "Listening_Time_minutes")
 
 ## Bivariate Analysis for Categorical Features 1 Mosaic plot 2 Heatmap of Counts
 biv_cat_func <- function(df, col1, col2) {
@@ -183,6 +257,8 @@ biv_cat_func(df = eda,col1 = "Episode_Title",col2 = "Episode_Sentiment")
 biv_cat_func(df = eda,col1 = "Podcast_Name",col2 = "Episode_Sentiment")
 biv_cat_func(df = eda,col1 = "Publication_Time",col2 = "Episode_Sentiment")
 biv_cat_func(df = eda,col1 = "Genre",col2 = "Publication_Time")
+biv_cat_func(df = eda,col1 = "Episode_Sentiment",col2 = "Is_Milestone")
+biv_cat_func(df = eda,col1 = "Episode_Sentiment",col2 = "Meta_genre")
 
 ## Bivariate Analysis for Categorical ~ Numerical  
 biv_cat_num_func <- function(df,num,cat){
@@ -243,3 +319,12 @@ biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Publication_Day"
 biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Genre")
 biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Episode_Sentiment")
 biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Podcast_Name")
+biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Is_Milestone")
+biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Meta_genre")
+biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Podcast_Quality_Group")
+biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Publication_Day_Group")
+biv_cat_num_func(df = eda,num = "Listening_Time_minutes",cat = "Publication_Day_Group")
+
+
+
+
