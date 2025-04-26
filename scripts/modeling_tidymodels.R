@@ -163,7 +163,7 @@ mars_model <- bag_mars(
 ## Set a Workflow set for light-tuning the models
 light_tuning_set <- workflow_set(
   preproc = list(engineered = recipe_engineered,original = recipe_original),
-  models = list(bag_mars = mars_model,xgb = xgb_model,mlp = mlp_model,null = null_model),
+  models = list(bag_mars = mars_model,xgb = xgb_model,mlp = mlp_model),
   cross = TRUE)
 
 # Take a sample 10% for faster tunning
