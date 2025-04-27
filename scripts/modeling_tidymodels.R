@@ -1,24 +1,28 @@
 
-#### Libraries
+#### Libraries for Modeling
 library(tidymodels)
 library(tidyverse)
 library(baguette)
+library(finetune)
+
 tidymodels_prefer()
 
 # Load the data 
 train <- read_csv("train.csv")
 
-
-#### Preprocessing
+#### Preprocessing #####
 
 ## Recipe with original features
 recipe_original <- recipe(Listening_Time_minutes ~ .,data = train) %>%
   
+  # Remove missing data 
+  step_naomit(all_predictors())%>%
+  
+  # Convert Char to Factors
+  step_string2factor(all_nominal_predictors())%>% 
+
   # Remove id for the modeling process
   add_role(id,new_role = "id") %>%
-  
-  # Impute missing data with bag trees
-  step_impute_bag(all_predictors()) %>%
   
   # Remove Near zero variance features
   step_nzv(all_predictors()) %>%
@@ -38,15 +42,17 @@ recipe_original <- recipe(Listening_Time_minutes ~ .,data = train) %>%
 ## Recipe with engineered features
 recipe_engineered <- recipe(Listening_Time_minutes ~ .,data = train) %>%
   
+  # Remove missing data 
+  step_naomit(all_predictors())%>%
+  
   # Remove id for the modeling process
   add_role(id,new_role = "id") %>%
-  
-  # Impute missing data with bag trees
-  step_impute_bag(all_predictors()) %>%
   
   # Add new features
   step_mutate(
     
+    Episode_Title = as.numeric(substr(x = Episode_Title,start = 8,stop = 12)),
+                               
     ## Features from Episode_Title
     Episode_Stage = case_when(
       Episode_Title <= 10 ~"New",
@@ -111,6 +117,9 @@ recipe_engineered <- recipe(Listening_Time_minutes ~ .,data = train) %>%
       "Episode_Sentiment","Episode_Title","Host_Popularity_percentage","Guest_Popularity_percentage",
       "Podcast_Quality"))%>%
   
+  # Convert Char to Factors
+  step_string2factor(all_nominal_predictors()) %>%
+
   # Remove Near zero variance features
   step_nzv(all_predictors()) %>%
   
@@ -148,8 +157,7 @@ xgb_model <- boost_tree(
 mlp_model <- mlp(
   hidden_units = tune(),
   penalty = tune(),
-  epochs = tune(),
-  learn_rate = tune())%>%
+  epochs = tune())%>%
   set_mode("regression")%>%
   set_engine("nnet")
 
@@ -171,12 +179,25 @@ light_tune_sample <- train %>% slice_sample(prop = 0.10)
 small_cv <- vfold_cv(v = 5,strata = Listening_Time_minutes,data = light_tune_sample)
 
 ## Tune the light tunning set via tune_race_anova 
+
+# Race control 
+race_ctrl <- control_race(
+  save_pred = TRUE,
+  verbose_elim = TRUE,
+  burn_in = 2,  
+  randomize = TRUE)
+
+# Execute tune_race_anova
 tune_race_anova <- workflow_map(
   object = light_tuning_set,
   fn = "tune_race_anova",
-  resamples = small_cv,
+  resamples = small_cv, 
   seed = 123,
-  verbose = TRUE)
+  verbose = TRUE,
+  grid = 15,
+  control = race_ctrl
+  )
   
   
+
   
