@@ -169,7 +169,7 @@ mars_model <- bag_mars(
 
 ## Set a Workflow set for light-tuning the models
 light_tuning_set <- workflow_set(
-  preproc = list(engineered = recipe_engineered,original = recipe_original),
+  preproc = list(original = recipe_original),
   models = list(bag_mars = mars_model,xgb = xgb_model,mlp = mlp_model),
   cross = TRUE)
 
@@ -193,7 +193,7 @@ tune_race_anova <- workflow_map(
   resamples = small_cv, 
   seed = 123,
   verbose = TRUE,
-  grid = 15,
+  grid = 20,
   control = race_ctrl
   )
 
@@ -220,7 +220,11 @@ mlp_model <- mlp_model %>% finalize_model(best_mlp)
 ## Workflow set to fit the models with all the data 
 fit_resamples_set <- workflow_set(
   preproc = list(original = recipe_original),
-  models = list(mlp = mlp_model,xgb = xgb_model,mars = mars_model,null = null_model)
+  models = list(
+    mlp = mlp_model,
+    xgb = xgb_model,
+    null = null_model
+    )
   )
 
 ## Workflow map with all the data 
@@ -234,7 +238,54 @@ fit_resamples_map <- workflow_map(
   verbose = TRUE,
   seed = 123)
 
+## MB0 for mlp
+mlp_mbo <- mlp(
+  hidden_units = tune(),
+  penalty = tune(),
+  epochs = tune())%>%
+  set_mode("regression")%>%
+  set_engine("nnet")
 
+# Mlp MBO Workflow
+mlp_mbo_workflow %>%
+  workflow()%>%
+  add_model(mlp_mbo) %>%
+  add_recipe(recipe_original)
+
+# Define parameter ranges
+mlp_params <- parameters(
+  hidden_units(range = c(1L, 100L)),
+  penalty(range = c(-5, 0)),  
+  epochs(range = c(10L, 200L))
+  )
+
+# Grid LHC
+mlp_mbo_grid <- grid_space_filling(
+  x = mlp_params,
+  type = "latin_hypercube",
+  size = 50)
+
+# Warm Start
+warm_up <- best_mlp
+
+# Tune MBO Control
+mbo_control <- control_bayes(
+  verbose = TRUE,
+  seed = 123,
+  time_limit = 240,
+  save_pred = TRUE,
+  save_workflow = TRUE
+  )
+
+## Execute MBO
+mbo_bayes <- tune_bayes(
+  object = mlp_mbo_workflow,
+  resamples = full_resample,
+  initial = warm_up,
+  param_info = mlp_mbo_grid,
+  control = mbo_control,
+  iter =  20
+  )
 
 
 
