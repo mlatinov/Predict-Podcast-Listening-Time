@@ -4,7 +4,6 @@ library(tidymodels)
 library(tidyverse)
 library(baguette)
 library(finetune)
-
 tidymodels_prefer()
 
 # Load the data 
@@ -197,7 +196,48 @@ tune_race_anova <- workflow_map(
   grid = 15,
   control = race_ctrl
   )
-  
-  
 
-  
+# Extract the best params
+best_bag_mars <- tune_race_anova %>%
+  extract_workflow_set_result("original_bag_mars") %>% 
+  select_best(metric = "rmse")
+
+best_mlp <- tune_race_anova %>%
+  extract_workflow_set_result("original_mlp")%>%
+  select_best(metric = "rmse")
+
+best_xgb <- tune_race_anova %>%
+  extract_workflow_set_result("original_xgb") %>%
+  select_best(metric = "rmse")
+
+## Finalize the models 
+mars_model <- mars_model %>% finalize_model(best_bag_mars)
+
+xgb_model <- xgb_model %>% finalize_model(best_xgb)
+
+mlp_model <- mlp_model %>% finalize_model(best_mlp)
+
+## Workflow set to fit the models with all the data 
+fit_resamples_set <- workflow_set(
+  preproc = list(original = recipe_original),
+  models = list(mlp = mlp_model,xgb = xgb_model,mars = mars_model,null = null_model)
+  )
+
+## Workflow map with all the data 
+full_resample <- vfold_cv(data = train,v = 3,strata = Listening_Time_minutes)
+
+# Execute the workflow map 
+fit_resamples_map <- workflow_map(
+  object = fit_resamples_set,
+  fn = "fit_resamples",
+  resamples = full_resample,
+  verbose = TRUE,
+  seed = 123)
+
+
+
+
+
+
+
+
