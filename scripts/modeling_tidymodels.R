@@ -247,16 +247,15 @@ mlp_params <- parameters(
 
 # Grid LHC
 mlp_mbo_grid <- grid_space_filling(
-  x = mlp_params,
   type = "latin_hypercube",
-  size = 50)
-
+  x = mlp_params,
+  size = 20)
 
 # Tune MBO Control
 mbo_control <- control_bayes(
   verbose = TRUE,
   seed = 123,
-  time_limit = 40,
+  time_limit = 240,
   save_pred = TRUE,
   save_workflow = TRUE
   )
@@ -265,13 +264,39 @@ mbo_control <- control_bayes(
 mbo_bayes <- tune_bayes(
   object = mlp_mbo_workflow,
   resamples = full_resample,
-  param_info = mlp_mbo_grid,
+  param_info = mlp_params,
   control = mbo_control,
   iter =  20
   )
 
+## Take best params
+best_params_mbo <- mbo_bayes %>%
+  select_best(metric = "rmse") 
 
+## Finalize the workflow
+mbo_workflow <-
+  workflow()%>%
+  add_model(mlp_mbo) %>%
+  add_recipe(recipe_original)
 
+final_workflow <- mbo_workflow %>%
+  finalize_workflow(best_mlp)
 
+## Fit the final model
+final_model <- final_workflow %>%
+  fit(data = train)
 
+## Load the test set
+test_data <- read_csv("test.csv")
 
+## Predict on the testing data
+predictions <- predict(final_model, new_data = test_data) %>%
+  bind_cols(test_data %>% select(id))
+
+## Submit the prediction
+submission <- predictions %>%
+  select(id, .pred) %>%
+  rename(Listening_Time_Seconds = .pred)
+
+# Write csv
+write_csv(submission, "submission.csv")
