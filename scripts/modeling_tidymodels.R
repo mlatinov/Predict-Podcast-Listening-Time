@@ -160,17 +160,10 @@ mlp_model <- mlp(
   set_mode("regression")%>%
   set_engine("nnet")
 
-## Bagged MARS
-mars_model <- bag_mars(
-  num_terms = tune(),
-  prod_degree = tune())%>%
-  set_mode("regression")%>%
-  set_engine("earth")
-
 ## Set a Workflow set for light-tuning the models
 light_tuning_set <- workflow_set(
   preproc = list(original = recipe_original),
-  models = list(bag_mars = mars_model,xgb = xgb_model,mlp = mlp_model),
+  models = list(xgb = xgb_model,mlp = mlp_model),
   cross = TRUE)
 
 # Take a sample 10% for faster tunning
@@ -198,10 +191,6 @@ tune_race_anova <- workflow_map(
   )
 
 # Extract the best params
-best_bag_mars <- tune_race_anova %>%
-  extract_workflow_set_result("original_bag_mars") %>% 
-  select_best(metric = "rmse")
-
 best_mlp <- tune_race_anova %>%
   extract_workflow_set_result("original_mlp")%>%
   select_best(metric = "rmse")
@@ -211,8 +200,6 @@ best_xgb <- tune_race_anova %>%
   select_best(metric = "rmse")
 
 ## Finalize the models 
-mars_model <- mars_model %>% finalize_model(best_bag_mars)
-
 xgb_model <- xgb_model %>% finalize_model(best_xgb)
 
 mlp_model <- mlp_model %>% finalize_model(best_mlp)
@@ -223,8 +210,7 @@ fit_resamples_set <- workflow_set(
   models = list(
     mlp = mlp_model,
     xgb = xgb_model,
-    null = null_model
-    )
+    null = null_model)
   )
 
 ## Workflow map with all the data 
@@ -247,16 +233,16 @@ mlp_mbo <- mlp(
   set_engine("nnet")
 
 # Mlp MBO Workflow
-mlp_mbo_workflow %>%
+mlp_mbo_workflow <-
   workflow()%>%
   add_model(mlp_mbo) %>%
   add_recipe(recipe_original)
 
 # Define parameter ranges
 mlp_params <- parameters(
-  hidden_units(range = c(1L, 100L)),
+  hidden_units(range = c(1L, 10L)),
   penalty(range = c(-5, 0)),  
-  epochs(range = c(10L, 200L))
+  epochs(range = c(500L, 800L))
   )
 
 # Grid LHC
@@ -265,14 +251,12 @@ mlp_mbo_grid <- grid_space_filling(
   type = "latin_hypercube",
   size = 50)
 
-# Warm Start
-warm_up <- best_mlp
 
 # Tune MBO Control
 mbo_control <- control_bayes(
   verbose = TRUE,
   seed = 123,
-  time_limit = 240,
+  time_limit = 40,
   save_pred = TRUE,
   save_workflow = TRUE
   )
@@ -281,7 +265,6 @@ mbo_control <- control_bayes(
 mbo_bayes <- tune_bayes(
   object = mlp_mbo_workflow,
   resamples = full_resample,
-  initial = warm_up,
   param_info = mlp_mbo_grid,
   control = mbo_control,
   iter =  20
